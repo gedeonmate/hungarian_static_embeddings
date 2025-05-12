@@ -6,6 +6,8 @@ from tensorflow.keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.utils import to_categorical
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Embedding, Bidirectional, LSTM, TimeDistributed, Dense
+from tensorflow.keras.layers import Layer, Lambda
+import tensorflow.keras.backend as K
 
 # Disable GPU usage
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
@@ -30,7 +32,7 @@ test_file = '../datasets/nerkor_merged/nerkor_test.conllup'
 
 logging_folder = "../logs/ner"
 
-lstm_units_list = [8, 16, 32, 64]
+lstm_units_list = [1, 2, 4, 8, 16, 32, 64]
 
 # Load dataset function
 def read_conll_file(file_path):
@@ -91,8 +93,18 @@ def build_lstm(vocab_size, embedding_dim, embedding_matrix, max_len, num_tags, l
         Bidirectional(LSTM(units=lstm_units, return_sequences=True, dropout=0.5)),
         TimeDistributed(Dense(num_tags, activation='softmax'))
     ])
-    model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+    model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=[masked_accuracy])
     return model
+
+def masked_accuracy(y_true, y_pred):
+    y_true_labels = K.argmax(y_true, axis=-1)
+    y_pred_labels = K.argmax(y_pred, axis=-1)
+
+    mask = K.cast(K.not_equal(y_true_labels, 0), dtype='float32')  # mask: 1 if not PAD, 0 if PAD
+    matches = K.cast(K.equal(y_true_labels, y_pred_labels), dtype='float32')
+
+    accuracy = K.sum(matches * mask) / K.sum(mask)
+    return accuracy
 
 # Iterate over models and LSTM units
 for model_name, model_path in models.items():

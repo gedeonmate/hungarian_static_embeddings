@@ -7,6 +7,8 @@ from tensorflow.keras.utils import to_categorical
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Embedding, Bidirectional, LSTM, TimeDistributed, Dense
 from sklearn.model_selection import train_test_split
+from tensorflow.keras.layers import Layer, Lambda
+import tensorflow.keras.backend as K
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
@@ -30,7 +32,7 @@ test_file = '../datasets/nerkor_merged/nerkor_test.conllup'
 
 logging_folder = "../logs/pos"
 
-lstm_units_list = [8, 16, 32, 64]
+lstm_units_list = [1, 2, 4, 8, 16, 32, 64]
 
 def read_conll_file(file_path):
     sentences = []
@@ -79,6 +81,17 @@ def labels_to_sequences(ner_labels, label_index):
         seq = [label_index[label] for label in sent]
         sequences.append(seq)
     return sequences
+
+
+def masked_accuracy(y_true, y_pred):
+    y_true_labels = K.argmax(y_true, axis=-1)
+    y_pred_labels = K.argmax(y_pred, axis=-1)
+
+    mask = K.cast(K.not_equal(y_true_labels, 0), dtype='float32')  # mask: 1 if not PAD, 0 if PAD
+    matches = K.cast(K.equal(y_true_labels, y_pred_labels), dtype='float32')
+
+    accuracy = K.sum(matches * mask) / K.sum(mask)
+    return accuracy
 
 train_sentences, train_pos_labels = read_conll_file(train_file)
 valid_sentences, valid_pos_labels = read_conll_file(valid_file)
@@ -131,19 +144,19 @@ for model_name, model_path in models.items():
     Y_train_pad = np.array([to_categorical(seq, num_classes=num_tags) for seq in Y_train_pad])
     Y_valid_pad = np.array([to_categorical(seq, num_classes=num_tags) for seq in Y_valid_pad])
     Y_test_pad  = np.array([to_categorical(seq, num_classes=num_tags) for seq in Y_test_pad])
-
+    
     def build_lstm(vocab_size, embedding_dim, embedding_matrix, max_len, num_tags, lstm_units):
-        model = Sequential()
-        model.add(Embedding(input_dim=vocab_size,
-                            output_dim=embedding_dim,
-                            weights=[embedding_matrix],
-                            input_length=max_len,
-                            trainable=False))
-        model.add(Bidirectional(LSTM(units=lstm_units, return_sequences=True, dropout=0.5)))
-        model.add(TimeDistributed(Dense(num_tags, activation='softmax')))
-        model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
-        return model
+        model = Sequential([
+            Embedding(input_dim=vocab_size, output_dim=embedding_dim, weights=[embedding_matrix],
+                    input_length=max_len, trainable=False),
+            Bidirectional(LSTM(units=lstm_units, return_sequences=True, dropout=0.5)),
+            TimeDistributed(Dense(num_tags, activation='softmax'))
+        ])
 
+        model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=[masked_accuracy])
+
+        return model
+    
     for lstm_units in lstm_units_list:
         print(f"Training model: {model_name}, LSTM units: {lstm_units}")
         model = build_lstm(vocab_size, embedding_dim, embedding_matrix, max_len, num_tags, lstm_units)
@@ -152,7 +165,7 @@ for model_name, model_path in models.items():
                             epochs=5,
                             validation_data=(X_valid_pad, Y_valid_pad))
 
-        val_accuracies = history.history['val_accuracy']
+        val_accuracies = history.history['val_masked_accuracy']
         with open(f"{logging_folder}/val/{model_name}_val_{lstm_units}.pkl", "wb") as f:
             pickle.dump(val_accuracies, f)
 
