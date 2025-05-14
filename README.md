@@ -24,7 +24,9 @@ Contains a jupyter notebook showcasing the analogy task with results.
 ---
 
 ## 💾 Datasets and Embeddings
-The embeddings extracted from huBERT and XLM-RoBERTa, the corpus used for the X2Static training, and the used vocabulary can be found in a Hugging Face collection.
+The embeddings extracted from huBERT and XLM-RoBERTa, the corpus used for the X2Static training, and the used vocabulary can be found on Hugging Face.
+The models can be found here: https://huggingface.co/gedeonmate/static_hungarian_bert
+The dataset and used vocabulary can be found here: https://huggingface.co/datasets/gedeonmate/hun_stat_dataset
 
 
 
